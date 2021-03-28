@@ -23,10 +23,10 @@ jobs:
           override: true
           components: rustfmt, clippy
     - name: Build
-      run: cargo +nighlty build --verbose
+      run: cargo +nightly build --verbose
     - name: Check formatting
-      run: cargo +nighlty fmt -- --check
+      run: cargo +nightly fmt -- --check
     - name: Lint
-      run: cargo +nighlty clippy
+      run: cargo +nightly clippy
     - name: Run tests
       run: cargo +nightly test --verbose
