@@ -7,7 +7,9 @@ elayday is a distributed key-value store inspired by [delay-line memory](https:/
 The easiest way to try out elayday is via Docker:
 
 ```
-docker run -it ghcr.io/tibordp/elayday:latest server --bind [::1]:24601 --destination [::1]:24602
+docker run -it ghcr.io/tibordp/elayday:latest server \
+    --bind [::1]:24601 \
+    --destination [::1]:24602
 ```
 
 (If you get `Error: IOError(Os { code: 99, kind: AddrNotAvailable, message: "Address not available" })`, you should look [into enabling IPv6 for Docker](https://docs.docker.com/config/daemon/ipv6/). If you do not care about IPv6, you really should, but anyway, you can also bind on `127.0.0.1:<port>`)
@@ -32,7 +34,7 @@ docker run -it ghcr.io/tibordp/elayday:latest reflector \
     --delay <number of seconds>
 ```
 
-Setup like this is of course not a real delay-line, as most of the time, the messages are stored in memory on the reflector.
+Setup like this is of course not a real delay-line, as most of the time the messages are stored in memory on the reflector.
 
 ### Multi-node setup
 

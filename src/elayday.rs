@@ -1,6 +1,6 @@
 tonic::include_proto!("elayday");
 
-pub(crate) const FILE_DESCRIPTOR_SET: &'static [u8] =
+pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
     tonic::include_file_descriptor_set!("elayday_descriptor");
 
 impl From<uuid::Uuid> for Uuid {
