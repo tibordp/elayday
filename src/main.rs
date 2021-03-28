@@ -5,29 +5,25 @@ pub mod api;
 pub mod codec;
 pub mod error;
 
-use tonic::{transport::Server, Request, Response, Status};
+use tonic::transport::Server;
 
 use std::time::{Duration, Instant};
 
-use elayday::elayday_server::{Elayday, ElaydayServer};
-use elayday::{
-    frame, Fragment, Frame, FrameType, GetValueRequest, GetValueResponse, PutValueRequest,
-    PutValueResponse, Value,
-};
+use elayday::elayday_server::ElaydayServer;
+use elayday::{frame, Fragment, Frame, FrameType, Value};
 
 use std::collections::HashMap;
 
-use bytes::BytesMut;
 use clap::{App, AppSettings, Arg};
 use futures::pin_mut;
 use futures::SinkExt;
 use prost::Message;
 use std::net::SocketAddr;
 use tokio::net::UdpSocket;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{channel, Receiver};
 use tokio::sync::oneshot;
 use tokio_stream::StreamExt;
-use tokio_util::codec::{BytesCodec, Decoder, Encoder};
+use tokio_util::codec::BytesCodec;
 use tokio_util::udp::UdpFramed;
 
 use crate::api::ElaydayService;
