@@ -1,26 +1,23 @@
-
-
 use crate::elayday::{frame, Fragment, Frame, FrameType, Value};
 
 use std::collections::HashMap;
 
 use std::time::{Duration, Instant};
 
-use clap::{App, AppSettings, Arg};
 use futures::pin_mut;
 use futures::SinkExt;
+use log::{info, warn};
 use std::net::SocketAddr;
 use tokio::net::UdpSocket;
-use tokio::sync::mpsc::{channel, Receiver};
+use tokio::sync::mpsc::Receiver;
 use tokio::sync::oneshot;
+use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
 use tokio_stream::StreamExt;
-use tokio_util::codec::BytesCodec;
 use tokio_util::udp::UdpFramed;
 
-use crate::ApiMessage;
-use crate::api::ElaydayService;
 use crate::codec::FrameCodec;
 use crate::error::ElaydayError;
+use crate::ApiMessage;
 
 struct GetClaim {
     fragments: Vec<Option<Vec<u8>>>,
@@ -79,7 +76,7 @@ impl Processor {
                         if let Some(frame::Payload::PingId(val)) = frame.payload {
                             match self.state.ping_lookup.remove(&val.into()) {
                                 Some((frame_count, ping_start)) => {
-                                    println!(
+                                    info!(
                                         "Received pong, approximate message count={:?}, rtt={:?}",
                                         self.state.frame_count - frame_count,
                                         Instant::now() - ping_start
@@ -124,7 +121,6 @@ impl Processor {
                                         .into_iter()
                                         .flat_map(|x| x.unwrap())
                                         .collect();
-                                    println!("Ahoj!");
                                     claim.reply.send(response).unwrap();
                                 }
                             }
@@ -137,7 +133,7 @@ impl Processor {
             ApiMessage::Put(key, value, reply) => {
                 let mut num_fragments = 0;
                 let value_id = uuid::Uuid::new_v4();
-                println!("PUT {:?}, {:?}", key, value);
+                info!("PUT {:?}, {:?}", key, value);
                 for (sequence_num, chunk) in value.chunks(self.mtu).enumerate() {
                     outbox.push(Frame {
                         r#type: FrameType::Fragment as i32,
@@ -160,7 +156,7 @@ impl Processor {
                 reply.send(()).unwrap();
             }
             ApiMessage::Get(key, reply) => {
-                println!("GET {:?}", key);
+                info!("GET {:?}", key);
                 self.state.key_lookup.insert(key, reply);
             }
             ApiMessage::Heartbeat(instant) => {
@@ -187,17 +183,15 @@ impl Processor {
         let incoming = udp_read.filter_map(move |x| match x {
             Ok((frame, _)) => Some(ApiMessage::Frame(frame)),
             Err(e) => {
-                println!("Malformed message received {:?}", e);
+                warn!("Malformed message received {:?}", e);
                 None
             }
         });
-        let heartbeat = tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(
-            Duration::from_millis(1000),
-        ))
-        .map(|x| ApiMessage::Heartbeat(x.into()));
+        let heartbeat = IntervalStream::new(tokio::time::interval(Duration::from_millis(1000)))
+            .map(|x| ApiMessage::Heartbeat(x.into()));
 
         let stream = incoming
-            .merge(tokio_stream::wrappers::ReceiverStream::new(mailbox))
+            .merge(ReceiverStream::new(mailbox))
             .merge(heartbeat);
 
         pin_mut!(stream);

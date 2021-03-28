@@ -54,6 +54,9 @@ spec:
               "--bind-grpc",
               "0.0.0.0:24602",
             ]
+          env:
+            - name: RUST_LOG
+              value: info
           readinessProbe:
             exec:
               command:
@@ -95,6 +98,9 @@ spec:
           image: elayday
           imagePullPolicy: Always
           args: ["reflector", "--bind", "0.0.0.0:24601", "--delay", "1"]
+          env:
+            - name: RUST_LOG
+              value: info
           ports:
             - containerPort: 24601
               name: inbox

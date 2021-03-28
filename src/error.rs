@@ -5,7 +5,6 @@ pub enum ElaydayError {
     IOError(std::io::Error),
     EncodeError(prost::EncodeError),
     DecodeError(prost::DecodeError),
-    CustomError(String),
 }
 
 impl Display for ElaydayError {
@@ -14,7 +13,6 @@ impl Display for ElaydayError {
             ElaydayError::IOError(status) => write!(f, "{}", status),
             ElaydayError::EncodeError(status) => write!(f, "{}", status),
             ElaydayError::DecodeError(status) => write!(f, "{}", status),
-            ElaydayError::CustomError(status) => write!(f, "{}", status),
         }
     }
 }
@@ -25,7 +23,6 @@ impl std::error::Error for ElaydayError {
             ElaydayError::IOError(ref err) => Some(err),
             ElaydayError::EncodeError(ref err) => Some(err),
             ElaydayError::DecodeError(ref err) => Some(err),
-            ElaydayError::CustomError(_) => None,
         }
     }
 }

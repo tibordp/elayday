@@ -15,11 +15,11 @@ ADD --chown=rust:rust . ./
 RUN cargo build --release
 
 FROM alpine:latest
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates dumb-init
 COPY --from=builder \
     /home/rust/src/target/x86_64-unknown-linux-musl/release/elayday \
     /usr/local/bin/
 COPY --from=builder \
     /home/rust/grpc_health_probe \
     /usr/local/bin/
-ENTRYPOINT ["/usr/local/bin/elayday"]
+ENTRYPOINT ["/usr/bin/dumb-init", "--", "/usr/local/bin/elayday"]
