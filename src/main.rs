@@ -1,6 +1,10 @@
 #![feature(never_type)]
 #![feature(async_closure)]
 
+pub mod error;
+pub mod api;
+pub mod codec;
+
 use tonic::{transport::Server, Request, Response, Status};
 
 use std::time::{Duration, Instant};
@@ -12,8 +16,6 @@ use elayday::{
 };
 
 use std::collections::HashMap;
-
-use std::fmt::{Display, Formatter};
 
 use bytes::BytesMut;
 use clap::{App, AppSettings, Arg};
@@ -28,8 +30,15 @@ use tokio_stream::StreamExt;
 use tokio_util::codec::{BytesCodec, Decoder, Encoder};
 use tokio_util::udp::UdpFramed;
 
+use crate::error::ElaydayError;
+use crate::api::ElaydayService;
+use crate::codec::FrameCodec;
+
 pub mod elayday {
     tonic::include_proto!("elayday");
+
+    pub(crate) const FILE_DESCRIPTOR_SET: &'static [u8] =
+        tonic::include_file_descriptor_set!("elayday_descriptor");
 
     impl From<uuid::Uuid> for Uuid {
         fn from(uuid: uuid::Uuid) -> Self {
@@ -56,122 +65,6 @@ pub enum ApiMessage {
 
 pub enum ApiResponse {
     GetResponse(Vec<u8>),
-}
-
-struct FrameCodec {}
-
-impl FrameCodec {
-    fn new() -> Self {
-        Self {}
-    }
-}
-
-#[derive(Debug)]
-pub enum ElaydayError {
-    IOError(std::io::Error),
-    EncodeError(prost::EncodeError),
-    DecodeError(prost::DecodeError),
-}
-
-impl Display for ElaydayError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ElaydayError::IOError(status) => write!(f, "{}", status),
-            ElaydayError::EncodeError(status) => write!(f, "{}", status),
-            ElaydayError::DecodeError(status) => write!(f, "{}", status),
-        }
-    }
-}
-
-impl std::error::Error for ElaydayError {
-    fn cause(&self) -> Option<&dyn std::error::Error> {
-        match self {
-            ElaydayError::IOError(ref err) => Some(err),
-            ElaydayError::EncodeError(ref err) => Some(err),
-            ElaydayError::DecodeError(ref err) => Some(err),
-        }
-    }
-}
-
-impl From<std::io::Error> for ElaydayError {
-    fn from(e: std::io::Error) -> ElaydayError {
-        ElaydayError::IOError(e)
-    }
-}
-
-impl From<prost::EncodeError> for ElaydayError {
-    fn from(e: prost::EncodeError) -> ElaydayError {
-        ElaydayError::EncodeError(e)
-    }
-}
-
-impl From<prost::DecodeError> for ElaydayError {
-    fn from(e: prost::DecodeError) -> ElaydayError {
-        ElaydayError::DecodeError(e)
-    }
-}
-
-impl Encoder<Frame> for FrameCodec {
-    type Error = ElaydayError;
-
-    fn encode(&mut self, item: Frame, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        item.encode(dst)?;
-        Ok(())
-    }
-}
-
-impl Decoder for FrameCodec {
-    type Item = Frame;
-    type Error = ElaydayError;
-
-    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        if src.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(Frame::decode(src)?))
-        }
-    }
-}
-
-pub struct ElaydayService {
-    mailbox: Sender<ApiMessage>,
-}
-
-#[tonic::async_trait]
-impl Elayday for ElaydayService {
-    async fn put_value(
-        &self,
-        request: Request<PutValueRequest>,
-    ) -> Result<Response<PutValueResponse>, Status> {
-        let request = request.into_inner();
-        let (tx, rx) = oneshot::channel();
-        self.mailbox
-            .clone()
-            .send(ApiMessage::Put(request.key, request.value, tx))
-            .await
-            .unwrap();
-
-        rx.await.unwrap();
-
-        Ok(Response::new(PutValueResponse {}))
-    }
-
-    async fn get_value(
-        &self,
-        request: Request<GetValueRequest>,
-    ) -> Result<Response<GetValueResponse>, Status> {
-        let request = request.into_inner();
-        let (tx, rx) = oneshot::channel();
-        self.mailbox
-            .clone()
-            .send(ApiMessage::Get(request.key, tx))
-            .await
-            .unwrap();
-
-        Ok(Response::new(GetValueResponse {
-            value: rx.await.unwrap(),
-        }))
-    }
 }
 
 struct GetClaim {
@@ -289,6 +182,7 @@ impl Processor {
             ApiMessage::Put(key, value, reply) => {
                 let mut num_fragments = 0;
                 let value_id = uuid::Uuid::new_v4();
+                println!("PUT {:?}, {:?}", key, value);
                 for (sequence_num, chunk) in value.chunks(self.mtu).enumerate() {
                     outbox.push(Frame {
                         r#type: FrameType::Fragment as i32,
@@ -389,7 +283,17 @@ async fn run_server(
     let elayday_service = ElaydayService { mailbox: tx };
 
     let server = tokio::spawn(async move {
+        let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
+        health_reporter.set_serving::<ElaydayServer<ElaydayService>>().await;
+
+        let reflection_service = tonic_reflection::server::Builder::configure()
+            .register_encoded_file_descriptor_set(elayday::FILE_DESCRIPTOR_SET)
+            .build()
+            .unwrap();
+
         Server::builder()
+            .add_service(reflection_service)
+            .add_service(health_service)
             .add_service(ElaydayServer::new(elayday_service))
             .serve(api_address)
             .await
@@ -480,9 +384,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(ref matches) = matches.subcommand_matches("server") {
         run_server(
-            matches.value_of("bind").unwrap().parse()?,
-            matches.value_of("destination").unwrap().parse()?,
-            matches.value_of("bind-grpc").unwrap().parse()?,
+            matches.value_of("bind").unwrap().parse().unwrap(),
+            match tokio::net::lookup_host(matches.value_of("destination").unwrap()).await?.next() {
+                Some(addr) => addr,
+                None => panic!()
+            },
+            matches.value_of("bind-grpc").unwrap().parse().unwrap(),
         )
         .await?;
     }
