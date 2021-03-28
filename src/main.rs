@@ -1,4 +1,5 @@
 #![feature(never_type)]
+#![feature(async_closure)]
 
 use tonic::{transport::Server, Request, Response, Status};
 
@@ -21,9 +22,9 @@ use futures::SinkExt;
 use prost::Message;
 use std::net::SocketAddr;
 use tokio::net::UdpSocket;
-use tokio::stream::StreamExt;
-use tokio::sync::mpsc::{channel, unbounded_channel, Receiver, Sender};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::oneshot;
+use tokio_stream::StreamExt;
 use tokio_util::codec::{BytesCodec, Decoder, Encoder};
 use tokio_util::udp::UdpFramed;
 
@@ -124,7 +125,11 @@ impl Decoder for FrameCodec {
     type Error = ElaydayError;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        Ok(Some(Frame::decode(src)?))
+        if src.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(Frame::decode(src)?))
+        }
     }
 }
 
@@ -214,7 +219,7 @@ impl Processor {
         self
     }
 
-    fn process_message(&mut self, message: ApiMessage) -> Vec<Frame> {
+    fn process_message(&mut self, message: ApiMessage) -> Option<Vec<Frame>> {
         let mut outbox = Vec::new();
 
         match message {
@@ -322,34 +327,48 @@ impl Processor {
             }
         }
 
-        outbox
+        Some(outbox)
     }
 
-    async fn run(&mut self, mailbox: Receiver<ApiMessage>) -> Result<!, ElaydayError> {
+    async fn run(&mut self, mailbox: Receiver<ApiMessage>) -> Result<(), ElaydayError> {
         let socket = UdpSocket::bind(&self.bind_address).await?;
         let (mut udp_write, udp_read) =
             futures::stream::StreamExt::split(UdpFramed::new(socket, FrameCodec::new()));
-        let incoming = udp_read.filter_map(|x| match x {
+
+        let incoming = udp_read.filter_map(move |x| match x {
             Ok((frame, _)) => Some(ApiMessage::Frame(frame)),
             Err(e) => {
                 println!("Malformed message received {:?}", e);
                 None
             }
         });
-        let heartbeat = tokio::time::interval(Duration::from_millis(1000))
-            .map(|x| ApiMessage::Heartbeat(x.into()));
+        let heartbeat = tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(
+            Duration::from_millis(1000),
+        ))
+        .map(|x| ApiMessage::Heartbeat(x.into()));
 
-        let stream = incoming.merge(mailbox).merge(heartbeat);
+        let stream = incoming
+            .merge(tokio_stream::wrappers::ReceiverStream::new(mailbox))
+            .merge(heartbeat);
+
         pin_mut!(stream);
 
         loop {
-            if let Some(api_message) = futures::stream::StreamExt::next(&mut stream).await {
-                for frame in self.process_message(api_message) {
-                    //tokio::time::delay_for(Duration::from_millis(500)).await;
-                    udp_write.send((frame, self.destination_address)).await?;
+            if let Some(api_message) = stream.next().await {
+                match self.process_message(api_message) {
+                    Some(frames) => {
+                        for frame in frames {
+                            udp_write.send((frame, self.destination_address)).await?;
+                        }
+                    }
+                    None => {
+                        break;
+                    }
                 }
             }
         }
+
+        Ok(())
     }
 }
 
@@ -378,13 +397,15 @@ async fn run_server(
 
     processor.await??;
     server.await??;
+
+    Ok(())
 }
 
 async fn run_reflector(
     bind_address: SocketAddr,
     delay: std::time::Duration,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (tx, mut rx) = unbounded_channel();
+    let (mut tx, mut rx) = futures::channel::mpsc::unbounded();
 
     let socket = UdpSocket::bind(bind_address).await?;
     let (mut udp_tx, mut udp_rx) =
@@ -392,18 +413,19 @@ async fn run_reflector(
 
     let writer_task = tokio::spawn(async move {
         while let Some((execute_at, buf, return_address)) = rx.next().await {
-            tokio::time::delay_until(execute_at).await;
-            udp_tx.send((buf, return_address)).await.unwrap();
+            tokio::time::sleep_until(execute_at).await;
+            udp_tx.send((buf, return_address)).await?;
         }
+        Ok::<(), std::io::Error>(())
     });
 
     while let Some(Ok((buf, return_address))) = udp_rx.next().await {
         let execute_at = tokio::time::Instant::now() + delay;
-        tx.send((execute_at, buf.into(), return_address)).unwrap();
+        tx.send((execute_at, buf.into(), return_address)).await?;
     }
     drop(tx);
 
-    writer_task.await?;
+    writer_task.await??;
 
     Ok(())
 }
@@ -419,19 +441,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             App::new("server") // The name we call argument with
                 .about("Runs the server") // The message displayed in "myapp -h"
                 .arg(
-                    Arg::with_name("bind")
+                    Arg::new("bind")
                         .long("bind")
                         .about("Endpoint to bind the UDP socket to")
                         .default_value("[::1]:24601"),
                 )
                 .arg(
-                    Arg::with_name("destination")
+                    Arg::new("destination")
                         .long("destination")
                         .about("Where to send the packets")
                         .default_value("[::1]:24601"),
                 )
                 .arg(
-                    Arg::with_name("bind-grpc")
+                    Arg::new("bind-grpc")
                         .long("bind-grpc")
                         .about("TCP endpoint where to bind the gRPC server")
                         .default_value("[::1]:24602"),
@@ -442,13 +464,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .setting(AppSettings::ArgRequiredElseHelp)
                 .about("Serves as a dumb reflector") // The message displayed in "myapp -h"
                 .arg(
-                    Arg::with_name("bind")
+                    Arg::new("bind")
                         .long("bind")
                         .about("Endpoint to bind the UDP socket to")
                         .default_value("[::1]:24601"),
                 )
                 .arg(
-                    Arg::with_name("delay")
+                    Arg::new("delay")
                         .long("delay")
                         .about("How much to delay the packets")
                         .default_value("0"),

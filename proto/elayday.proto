@@ -9,9 +9,10 @@ message UUID {
 }
 
 enum FrameType {
-  PING = 0;
-  VALUE = 1;
-  FRAGMENT = 2;
+  UNKNOWN = 0;
+  PING = 1;
+  VALUE = 2;
+  FRAGMENT = 3;
 }
 
 message Fragment {
