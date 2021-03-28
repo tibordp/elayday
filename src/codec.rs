@@ -1,13 +1,13 @@
-use crate::error::ElaydayError;
-use tokio_util::codec::{Decoder, Encoder};
-use bytes::BytesMut;
 use crate::elayday::Frame;
+use crate::error::ElaydayError;
+use bytes::BytesMut;
 use prost::Message;
+use tokio_util::codec::{Decoder, Encoder};
 
 pub struct FrameCodec {}
 
 impl FrameCodec {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {}
     }
 }

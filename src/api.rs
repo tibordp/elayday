@@ -1,14 +1,17 @@
-use tonic::{Request, Response, Status};
-use crate::elayday::elayday_server::{Elayday};
-use crate::elayday::{
-    GetValueRequest, GetValueResponse, PutValueRequest,
-    PutValueResponse
-};
-use tokio::sync::{oneshot, mpsc::Sender};
+use crate::elayday::elayday_server::Elayday;
+use crate::elayday::{GetValueRequest, GetValueResponse, PutValueRequest, PutValueResponse};
 use crate::ApiMessage;
+use tokio::sync::{mpsc::Sender, oneshot};
+use tonic::{Request, Response, Status};
 
 pub struct ElaydayService {
     mailbox: Sender<ApiMessage>,
+}
+
+impl ElaydayService {
+    pub fn new(mailbox: Sender<ApiMessage>) -> Self {
+        Self { mailbox }
+    }
 }
 
 #[tonic::async_trait]

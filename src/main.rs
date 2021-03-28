@@ -1,9 +1,9 @@
 #![feature(never_type)]
 #![feature(async_closure)]
 
-pub mod error;
 pub mod api;
 pub mod codec;
+pub mod error;
 
 use tonic::{transport::Server, Request, Response, Status};
 
@@ -30,9 +30,9 @@ use tokio_stream::StreamExt;
 use tokio_util::codec::{BytesCodec, Decoder, Encoder};
 use tokio_util::udp::UdpFramed;
 
-use crate::error::ElaydayError;
 use crate::api::ElaydayService;
 use crate::codec::FrameCodec;
+use crate::error::ElaydayError;
 
 pub mod elayday {
     tonic::include_proto!("elayday");
@@ -280,11 +280,13 @@ async fn run_server(
             .await
     });
 
-    let elayday_service = ElaydayService { mailbox: tx };
+    let elayday_service = ElaydayService::new(tx);
 
     let server = tokio::spawn(async move {
         let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
-        health_reporter.set_serving::<ElaydayServer<ElaydayService>>().await;
+        health_reporter
+            .set_serving::<ElaydayServer<ElaydayService>>()
+            .await;
 
         let reflection_service = tonic_reflection::server::Builder::configure()
             .register_encoded_file_descriptor_set(elayday::FILE_DESCRIPTOR_SET)
@@ -385,9 +387,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(ref matches) = matches.subcommand_matches("server") {
         run_server(
             matches.value_of("bind").unwrap().parse().unwrap(),
-            match tokio::net::lookup_host(matches.value_of("destination").unwrap()).await?.next() {
+            match tokio::net::lookup_host(matches.value_of("destination").unwrap())
+                .await?
+                .next()
+            {
                 Some(addr) => addr,
-                None => panic!()
+                None => panic!(),
             },
             matches.value_of("bind-grpc").unwrap().parse().unwrap(),
         )
