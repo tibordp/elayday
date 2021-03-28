@@ -27,6 +27,6 @@ jobs:
     - name: Check formatting
       run: cargo +nightly fmt -- --check
     - name: Lint
-      run: cargo +nightly clippy
+      run: cargo +nightly clippy -- -D warnings
     - name: Run tests
       run: cargo +nightly test --verbose

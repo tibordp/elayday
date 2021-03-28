@@ -7,14 +7,15 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tonic = { version = "0.2", features = ["tls"] }
-tokio = { version = "0.2", features = ["full"] }
-tokio-util = { version = "*", features = ["udp"] }
-futures = "^0.3"
-bytes = "*"
-prost = "0.6"
-clap = "3.0.0-beta.1"
-uuid = { version = "0.8.1", features = ["v4"] }
+tonic = { version = "^0.4", features = ["tls"] }
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "*", features = ["codec", "net"] }
+tokio-stream = { version = "*", features = ["time"] }
+futures = { version = "0.3", default-features = false, features = ["alloc"] }
+bytes = "^1.0"
+prost = "0.7"
+clap = "3.0.0-beta.2"
+uuid = { version = "^0.8", features = ["v4"] }
 
 [build-dependencies]
-tonic-build = { version = "0.2", features = ["prost"] }
+tonic-build = { version = "^0.4", features = ["prost"] }
