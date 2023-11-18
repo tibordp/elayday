@@ -12,7 +12,7 @@ docker run -it ghcr.io/tibordp/elayday:latest server \
     --destination [::1]:24602
 ```
 
-(If you get `Error: IOError(Os { code: 99, kind: AddrNotAvailable, message: "Address not available" })`, you should look [into enabling IPv6 for Docker](https://docs.docker.com/config/daemon/ipv6/). If you do not care about IPv6, you really should, but anyway, you can also bind on `127.0.0.1:<port>`)
+(If you get `Error: IO(Os { code: 99, kind: AddrNotAvailable, message: "Address not available" })`, you should look [into enabling IPv6 for Docker](https://docs.docker.com/config/daemon/ipv6/). If you do not care about IPv6, you really should, but anyway, you can also bind on `127.0.0.1:<port>`)
 
 Elayday is now running, but is sending packets into the void, so in order for the delay line to be closed, something needs to be sending the packets back.
 
@@ -82,11 +82,11 @@ For best results wraps 1000 turns of optical fibre around the Earth's equator or
 
 ## Development
 
-Build from source with nighlty Rust:
+Build from source with Cargo:
 
 ```
-cargo +nightly build
-``` 
+cargo build
+```
 
 A full-featured [Tilt](https://tilt.dev/) environment is available running elayday in your local Kubernetes cluster.
 
@@ -100,7 +100,7 @@ The gRPC API will be available on `localhost:8080`
 
 - Ability to delete keys
 - Ability to detect non-existent keys on GET operation. Currently it will block until the key appears.
-- Forward error correction to deal with lost packets 
+- Forward error correction to deal with lost packets
 
 ## Is this actually useful?
 

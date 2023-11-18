@@ -85,7 +85,8 @@ async fn run_reflector(
     delay: std::time::Duration,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (tx, rx) = unbounded_channel();
-    let mut rx: UnboundedReceiverStream<(Instant, BytesMut, SocketAddr)> = UnboundedReceiverStream::new(rx);
+    let mut rx: UnboundedReceiverStream<(Instant, BytesMut, SocketAddr)> =
+        UnboundedReceiverStream::new(rx);
 
     let socket = UdpSocket::bind(bind_address).await?;
     let (mut udp_tx, mut udp_rx) =
@@ -101,7 +102,7 @@ async fn run_reflector(
 
     while let Some(Ok((buf, return_address))) = udp_rx.next().await {
         let execute_at = Instant::now() + delay;
-        tx.send((execute_at, buf.into(), return_address))?;
+        tx.send((execute_at, buf, return_address))?;
     }
     drop(tx);
 
@@ -160,7 +161,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .get_matches();
 
-    if let Some(ref matches) = matches.subcommand_matches("server") {
+    if let Some(matches) = matches.subcommand_matches("server") {
         run_server(
             matches.value_of("bind").unwrap().parse().unwrap(),
             match tokio::net::lookup_host(matches.value_of("destination").unwrap())
@@ -175,7 +176,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
     }
 
-    if let Some(ref matches) = matches.subcommand_matches("reflector") {
+    if let Some(matches) = matches.subcommand_matches("reflector") {
         run_reflector(
             matches.value_of("bind").unwrap().parse()?,
             Duration::from_secs_f64(matches.value_of("delay").unwrap().parse()?),
