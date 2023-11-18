@@ -1,12 +1,10 @@
-#![feature(never_type)]
-#![feature(async_closure)]
-
 mod api;
 mod codec;
 mod elayday;
 mod error;
 mod processor;
 
+use bytes::BytesMut;
 use tonic::transport::Server;
 
 use std::time::{Duration, Instant};
@@ -87,7 +85,7 @@ async fn run_reflector(
     delay: std::time::Duration,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (tx, rx) = unbounded_channel();
-    let mut rx = UnboundedReceiverStream::new(rx);
+    let mut rx: UnboundedReceiverStream<(Instant, BytesMut, SocketAddr)> = UnboundedReceiverStream::new(rx);
 
     let socket = UdpSocket::bind(bind_address).await?;
     let (mut udp_tx, mut udp_rx) =
@@ -127,19 +125,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .arg(
                     Arg::new("bind")
                         .long("bind")
-                        .about("Endpoint to bind the UDP socket to")
+                        .help("Endpoint to bind the UDP socket to")
                         .default_value("[::1]:24601"),
                 )
                 .arg(
                     Arg::new("destination")
                         .long("destination")
-                        .about("Where to send the packets")
+                        .help("Where to send the packets")
                         .default_value("[::1]:24601"),
                 )
                 .arg(
                     Arg::new("bind-grpc")
                         .long("bind-grpc")
-                        .about("TCP endpoint where to bind the gRPC server")
+                        .help("TCP endpoint where to bind the gRPC server")
                         .default_value("[::1]:24602"),
                 ),
         )
@@ -150,13 +148,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .arg(
                     Arg::new("bind")
                         .long("bind")
-                        .about("Endpoint to bind the UDP socket to")
+                        .help("Endpoint to bind the UDP socket to")
                         .default_value("[::1]:24601"),
                 )
                 .arg(
                     Arg::new("delay")
                         .long("delay")
-                        .about("How much to delay the packets")
+                        .help("How much to delay the packets")
                         .default_value("0"),
                 ),
         )
